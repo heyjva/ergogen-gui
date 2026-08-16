@@ -91,6 +91,12 @@ if [ -d node_modules/ergogen ]; then
     pnpm run build
     cp dist/ergogen.js "$PROJECT_ROOT/public/dependencies/ergogen.js"
   )
+
+  # Local customization: make the KiCad 8 template emit a board-sized "User"
+  # paper (instead of a fixed A3 sheet) so PCB previews and KiCad open framed
+  # on the board. Applied to node_modules source and the bundled ergogen.js.
+  echo "Applying board-sized paper patch..."
+  node "$PROJECT_ROOT/patch/apply_paper_size.js" || echo "paper-size patch skipped"
 else
   echo "Directory node_modules/ergogen not found."
 fi
