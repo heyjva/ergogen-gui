@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchConfigFromUrl } from '../utils/github';
 import { mapSeparateToInjectionsArray } from '../utils/ergogenBundleLoader';
-import { checkFileBridge, readConfigFromFile } from '../utils/fileBridge';
+import { checkFileBridge, readConfigFromFile, readFootprintsFromFiles } from '../utils/fileBridge';
 import '../utils/codeberg';
 import '../utils/forgejo';
 
@@ -105,10 +105,20 @@ export const useConfigLoader = ({
           console.log('[useConfigLoader] save-helper returned empty contents');
           return;
         }
-        // Reuse the same pipeline as remote loads (no injections to process for
-        // a plain local file; footprints are resolved from the bundled library
-        // by reference in the config).
-        await processInjectionsWithConflictResolution([], contents);
+        // Also load any custom footprints that live next to the config
+        // (footprints/<group>/<name>.js) and inject them, so references like
+        // `ceoloide/encoder_evqwgd001` resolve in the GUI just like they do with
+        // the CLI.
+        const footprintInjections = await readFootprintsFromFiles();
+        if (footprintInjections.length > 0) {
+          console.log(
+            `[useConfigLoader] injecting ${footprintInjections.length} custom footprint(s) from disk`
+          );
+        }
+        await processInjectionsWithConflictResolution(
+          footprintInjections,
+          contents
+        );
       } catch (e) {
         console.error(
           '[useConfigLoader] Failed to load from local save-helper:',

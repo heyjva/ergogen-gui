@@ -87,6 +87,35 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Returns all custom footprints found next to the config, as an array of
+    // { name, code } where name matches how the config references them, e.g.
+    // "ceoloide/encoder_evqwgd001". The GUI injects these so custom footprints
+    // resolve the same way they do with the CLI.
+    if (req.method === 'GET' && url.pathname === '/footprints') {
+      const footprints = [];
+      const fpRoot = path.resolve(path.dirname(CONFIG_PATH), 'footprints');
+      try {
+        const groups = await fs.readdir(fpRoot, { withFileTypes: true });
+        for (const group of groups) {
+          if (!group.isDirectory()) continue;
+          const groupDir = path.join(fpRoot, group.name);
+          const files = await fs.readdir(groupDir);
+          for (const file of files) {
+            if (!file.endsWith('.js')) continue;
+            const code = await fs.readFile(path.join(groupDir, file), 'utf8');
+            const name = `${group.name}/${file.replace(/\.js$/, '')}`;
+            footprints.push({ name, code });
+          }
+        }
+      } catch (e) {
+        // No footprints dir is fine; just return an empty list.
+        if (e.code !== 'ENOENT') throw e;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, footprints }));
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/save') {
       const body = await readBody(req);
       await fs.writeFile(CONFIG_PATH, body, 'utf8');

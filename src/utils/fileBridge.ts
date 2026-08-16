@@ -70,3 +70,21 @@ export const writeConfigToFile = async (contents: string): Promise<string> => {
   const data = await res.json().catch(() => ({}));
   return (data.path as string) || 'config file';
 };
+
+/**
+ * Fetches the custom footprints that live next to the config file (under a
+ * sibling `footprints/<group>/<name>.js` layout). Returns them as ergogen GUI
+ * injection tuples: ['footprint', 'group/name', code]. Returns [] if the helper
+ * is unavailable or there are no custom footprints.
+ */
+export const readFootprintsFromFiles = async (): Promise<string[][]> => {
+  try {
+    const res = await fetch(`${HELPER_URL}/footprints`, { method: 'GET' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const fps: { name: string; code: string }[] = data.footprints || [];
+    return fps.map((f) => ['footprint', f.name, f.code]);
+  } catch {
+    return [];
+  }
+};
