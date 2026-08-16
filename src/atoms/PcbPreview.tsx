@@ -94,20 +94,14 @@ const PcbPreview = ({
       if (viewer && typeof viewer.zoom_to_board === 'function') {
         try {
           viewer.zoom_to_board();
-          console.debug('[PcbPreview] zoom_to_board() called (fit to board)');
           return;
-        } catch (e) {
-          console.debug('[PcbPreview] zoom_to_board threw, will retry', e);
+        } catch {
           // Edge.Cuts layer may not be parsed yet; retry below.
         }
       }
 
       if (attempt < 60) {
         window.setTimeout(() => fitToBoard(attempt + 1), 100);
-      } else {
-        console.warn(
-          '[PcbPreview] gave up trying to auto-fit: board viewer / zoom_to_board not found'
-        );
       }
     };
 
