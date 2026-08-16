@@ -52,34 +52,69 @@ const PcbPreview = ({
 
     let cancelled = false;
 
-    // Try to frame the board. KiCanvas needs the viewer + layers ready, so we
-    // retry briefly until zoom_to_board is available and succeeds.
+    // Recursively search an element and its shadow roots for a node matching
+    // the predicate. KiCanvas nests its board viewer several shadow roots deep
+    // (kicanvas-embed -> kc-board-app -> kc-board-viewer), so a plain
+    // querySelector won't find it.
+    const deepFind = (
+      root: Element | ShadowRoot,
+      pred: (el: Element) => boolean
+    ): Element | null => {
+      const children = Array.from(
+        (root as Element).querySelectorAll?.('*') ?? []
+      );
+      for (const child of children) {
+        if (pred(child)) return child;
+        const sr = (child as HTMLElement).shadowRoot;
+        if (sr) {
+          const found = deepFind(sr, pred);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    // Try to find the KiCanvas viewer that exposes zoom_to_board and call it.
     const fitToBoard = (attempt = 0): void => {
       if (cancelled) return;
-      const viewer = el.viewer;
+
+      // 1) The embed may directly expose .viewer.
+      let viewer: KiCanvasViewer | undefined = el.viewer;
+
+      // 2) Otherwise, dig through the shadow DOM for the board viewer element
+      //    and read its `.viewer` (the object with zoom_to_board).
+      if (!viewer || typeof viewer.zoom_to_board !== 'function') {
+        const boardViewerEl = deepFind(
+          el,
+          (c) => c.tagName?.toLowerCase() === 'kc-board-viewer'
+        ) as (Element & { viewer?: KiCanvasViewer }) | null;
+        viewer = boardViewerEl?.viewer;
+      }
+
       if (viewer && typeof viewer.zoom_to_board === 'function') {
         try {
           viewer.zoom_to_board();
           return;
         } catch {
-          // Edge.Cuts layer may not be parsed yet; fall through to retry.
+          // Edge.Cuts layer may not be parsed yet; retry below.
         }
       }
-      if (attempt < 30) {
+
+      if (attempt < 60) {
         window.setTimeout(() => fitToBoard(attempt + 1), 100);
       }
     };
 
-    // KiCanvas dispatches a "load" event when the document is ready; use it as
-    // the primary trigger, with a fallback timer in case the event was missed.
+    // Start polling shortly after mount; also react to the internal load event
+    // if it happens to bubble.
     const onLoad = () => fitToBoard();
     el.addEventListener('load', onLoad);
-    const fallback = window.setTimeout(() => fitToBoard(), 300);
+    const start = window.setTimeout(() => fitToBoard(), 200);
 
     return () => {
       cancelled = true;
       el.removeEventListener('load', onLoad);
-      window.clearTimeout(fallback);
+      window.clearTimeout(start);
     };
   }, [previewKey, pcb]);
 
