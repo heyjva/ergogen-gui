@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchConfigFromUrl } from '../utils/github';
 import { mapSeparateToInjectionsArray } from '../utils/ergogenBundleLoader';
+import { checkFileBridge, readConfigFromFile } from '../utils/fileBridge';
 import '../utils/codeberg';
 import '../utils/forgejo';
 
@@ -78,6 +79,43 @@ export const useConfigLoader = ({
         } finally {
           setIsLoading(false);
         }
+        return;
+      }
+
+      // No remote URL param: if the local save-helper is running (see
+      // scripts/save-server.mjs), load config.yaml directly from disk so the
+      // app opens straight into the editor with the on-disk file as the source
+      // of truth. This is what powers the local preview/edit workflow and works
+      // in Firefox/Zen where the File System Access API is unavailable.
+      try {
+        const status = await checkFileBridge();
+        if (!status.available) {
+          console.log(
+            '[useConfigLoader] local save-helper not detected; showing Welcome page'
+          );
+          return;
+        }
+        setIsLoading(true);
+        console.log(
+          '[useConfigLoader] loading config.yaml from local save-helper:',
+          status.path
+        );
+        const contents = await readConfigFromFile();
+        if (contents === null || contents.trim() === '') {
+          console.log('[useConfigLoader] save-helper returned empty contents');
+          return;
+        }
+        // Reuse the same pipeline as remote loads (no injections to process for
+        // a plain local file; footprints are resolved from the bundled library
+        // by reference in the config).
+        await processInjectionsWithConflictResolution([], contents);
+      } catch (e) {
+        console.error(
+          '[useConfigLoader] Failed to load from local save-helper:',
+          e
+        );
+      } finally {
+        setIsLoading(false);
       }
     };
 
