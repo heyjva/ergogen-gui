@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
 import Ergogen from './Ergogen';
@@ -13,6 +13,7 @@ import {
   useConfigContext,
 } from './context/ConfigContext';
 import { getConfigFromHash } from './utils/share';
+import { checkFileBridge, readConfigFromFile } from './utils/fileBridge';
 import ConflictResolutionDialog from './molecules/ConflictResolutionDialog';
 import { useInjectionConflictResolution } from './hooks/useInjectionConflictResolution';
 import BulkDownloadDialog from './molecules/BulkDownloadDialog';
@@ -324,8 +325,40 @@ const AppContent = ({
   // Get configInput from context to ensure we have the latest value
   const configInput = configContext?.configInput;
   const location = useLocation();
+  const navigate = useNavigate();
   const onUpdate = useServiceWorkerUpdate();
   const pwaState = usePwaInstallPrompt();
+
+  // --- Auto-load config.yaml from the local save-helper on startup ---
+  // If the save-helper (scripts/save-server.mjs) is running, load the on-disk
+  // config.yaml into the editor automatically and go straight to the editor
+  // view, skipping the Welcome/"Choose File" landing page. This makes the file
+  // on disk the source of truth. Runs once on mount, and only if there is no
+  // pending shared config from a URL and no config already loaded.
+  const hasAutoLoadedFromFileRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoLoadedFromFileRef.current) return;
+    if (!configContext) return;
+    if (pendingSharedConfig) return; // a shared URL config takes precedence
+    hasAutoLoadedFromFileRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const status = await checkFileBridge();
+      if (cancelled || !status.available) return;
+      const contents = await readConfigFromFile();
+      if (cancelled || contents === null || contents.trim() === '') return;
+      // Seed the editor/context and jump to the editor route.
+      configContext.createNewConfig(contents, 'config.yaml');
+      await configContext.generateNow(contents, configContext.injectionInput, {
+        pointsonly: false,
+      });
+      navigate('/');
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Store configs count in a ref to safely read it in useEffect without lint dependencies
   const configsCountRef = useRef(0);

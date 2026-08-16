@@ -4,7 +4,6 @@ import debounce from 'lodash.debounce';
 import { useConfigContext } from '../context/ConfigContext';
 import {
   checkFileBridge,
-  readConfigFromFile,
   writeConfigToFile,
 } from '../utils/fileBridge';
 
@@ -58,7 +57,6 @@ const ConfigEditor = ({
     'idle' | 'saving' | 'saved' | 'error'
   >('idle');
   const [saveMessage, setSaveMessage] = useState<string>('');
-  const didLoadFromFileRef = useRef<boolean>(false);
 
   // Provide safe defaults when context is null to avoid conditional hooks
   const defaults = {
@@ -134,9 +132,9 @@ const ConfigEditor = ({
     [debouncedSetConfigInput, updateRealtimeConfigInput]
   );
 
-  // On first mount, detect the local save-helper and, if present, seed the
-  // editor + context from the real config.yaml on disk so the on-disk file is
-  // the source of truth.
+  // On mount, detect whether the local save-helper is available so the
+  // "Save to File" button can be enabled/disabled accordingly. The actual
+  // initial load of config.yaml is handled at app startup in App.tsx.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -144,24 +142,10 @@ const ConfigEditor = ({
       if (cancelled) return;
       setFileAvailable(status.available);
       setFilePath(status.path);
-      if (status.available && !didLoadFromFileRef.current) {
-        const contents = await readConfigFromFile();
-        if (!cancelled && contents !== null && contents.trim() !== '') {
-          didLoadFromFileRef.current = true;
-          debouncedSetConfigInput.cancel();
-          updateRealtimeConfigInput(contents);
-          setConfigInput(contents);
-          if (editorRef.current) {
-            editorRef.current.setValue(contents);
-          }
-          generateNow(contents, injectionInput, { pointsonly: false });
-        }
-      }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Writes the current editor contents to the real config.yaml via the helper.
